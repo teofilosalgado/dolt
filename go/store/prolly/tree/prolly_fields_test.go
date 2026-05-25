@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/twpayne/go-geos"
 
 	"github.com/dolthub/dolt/go/store/pool"
 	"github.com/dolthub/dolt/go/store/val"
@@ -240,18 +241,18 @@ func testRoundTripProllyFields(t *testing.T, test prollyFieldTest) {
 }
 
 func mustParseGeometryType(t *testing.T, s string) (v interface{}) {
-	// Determine type, and get data
-	geomType, data, _, err := spatial.ParseWKTHeader(s)
+	geosContext := geos.NewContext()
+	geomFromWKT, err := geosContext.NewGeomFromWKT(s)
 	require.NoError(t, err)
+	geomFromWKT = geomFromWKT.SetSRID(int(0))
 
-	srid, order := uint32(0), false
-	switch geomType {
-	case "point":
-		v, err = spatial.WKTToPoint(data, srid, order)
-	case "linestring":
-		v, err = spatial.WKTToLine(data, srid, order)
-	case "polygon":
-		v, err = spatial.WKTToPoly(data, srid, order)
+	switch geomFromWKT.Type() {
+	case "Point":
+		v, err = spatial.WKTToPoint(geomFromWKT)
+	case "LineString":
+		v, err = spatial.WKTToLineString(geomFromWKT)
+	case "Polygon":
+		v, err = spatial.WKTToPolygon(geomFromWKT)
 	default:
 		panic("unknown geometry type")
 	}

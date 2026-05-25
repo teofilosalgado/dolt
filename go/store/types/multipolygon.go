@@ -22,12 +22,12 @@ import (
 	"strings"
 
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/twpayne/go-geos"
 )
 
 // MultiPolygon is a Noms Value wrapper around a string.
 type MultiPolygon struct {
-	Polygons []Polygon
-	SRID     uint32
+	Geometry *geos.Geom
 }
 
 // Value interface
@@ -36,55 +36,17 @@ func (v MultiPolygon) Value(ctx context.Context) (Value, error) {
 }
 
 func (v MultiPolygon) Equals(other Value) bool {
-	// Compare types
-	v2, ok := other.(MultiPolygon)
-	if !ok {
-		return false
+	if v2, ok := other.(MultiPolygon); ok {
+		return v.Geometry.Equals(v2.Geometry)
 	}
-	// Compare SRID
-	if v.SRID != v2.SRID {
-		return false
-	}
-	// Compare lengths of polygons
-	if len(v.Polygons) != len(v2.Polygons) {
-		return false
-	}
-	// Compare each polygon
-	for i := 0; i < len(v.Polygons); i++ {
-		if !v.Polygons[i].Equals(v2.Polygons[i]) {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 func (v MultiPolygon) Less(ctx context.Context, nbf *NomsBinFormat, other LesserValuable) (bool, error) {
-	// Compare types
-	v2, ok := other.(MultiPolygon)
-	if !ok {
-		return MultiPolygonKind < other.Kind(), nil
+	if v2, ok := other.(MultiPolygon); ok {
+		return v.Geometry.Bounds().Geom().Area() < v2.Geometry.Bounds().Geom().Area(), nil
 	}
-	// Compare SRID
-	if v.SRID != v2.SRID {
-		return v.SRID < v2.SRID, nil
-	}
-	// Get shorter length
-	var n int
-	len1 := len(v.Polygons)
-	len2 := len(v2.Polygons)
-	if len1 < len2 {
-		n = len1
-	} else {
-		n = len2
-	}
-	// Compare each polygon until there is one that is less
-	for i := 0; i < n; i++ {
-		if !v.Polygons[i].Equals(v2.Polygons[i]) {
-			return v.Polygons[i].Less(ctx, nbf, v2.Polygons[i])
-		}
-	}
-	// Determine based off length
-	return len1 < len2, nil
+	return MultiPointKind < other.Kind(), nil
 }
 
 func (v MultiPolygon) Hash(nbf *NomsBinFormat) (hash.Hash, error) {
@@ -152,10 +114,12 @@ func (v MultiPolygon) skip(nbf *NomsBinFormat, b *binaryNomsReader) {
 }
 
 func (v MultiPolygon) HumanReadableString() string {
-	polys := make([]string, len(v.Polygons))
-	for i, l := range v.Polygons {
-		polys[i] = l.HumanReadableString()
+	coordinateSequence := v.Geometry.CoordSeq()
+	points := make([]string, coordinateSequence.Size())
+
+	for i := range coordinateSequence.Size() {
+		points[i] = fmt.Sprintf("SRID: %d POINT(%s %s)", v.Geometry.SRID(), strconv.FormatFloat(coordinateSequence.X(i), 'g', -1, 64), strconv.FormatFloat(coordinateSequence.Y(i), 'g', -1, 64))
 	}
-	s := fmt.Sprintf("SRID: %d MULTIPOLYGON(%s)", v.SRID, strings.Join(polys, ","))
+	s := fmt.Sprintf("SRID: %d MULTIPOLYGON(%s)", v.Geometry.SRID(), strings.Join(points, ","))
 	return strconv.Quote(s)
 }

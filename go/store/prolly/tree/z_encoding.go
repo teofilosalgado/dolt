@@ -19,8 +19,8 @@ import (
 	"math"
 	"math/bits"
 
-	"github.com/dolthub/go-mysql-server/sql/expression/function/spatial"
 	"github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/twpayne/go-geos"
 
 	"github.com/dolthub/dolt/go/store/val"
 )
@@ -133,7 +133,7 @@ type ZVal = [2]uint64
 // ZValue takes a Point, Lexes the x and y values, and interleaves the bits into a [2]uint64
 // It will put the bits in this order: x_0, y_0, x_1, y_1 ... x_63, Y_63
 func ZValue(p types.Point) (z ZVal) {
-	xLex, yLex := LexFloat(p.X), LexFloat(p.Y)
+	xLex, yLex := LexFloat(p.Geometry.X()), LexFloat(p.Geometry.Y())
 	z[0], z[1] = InterleaveUInt64(xLex>>32, yLex>>32), InterleaveUInt64(xLex&0xFFFFFFFF, yLex&0xFFFFFFFF)
 	return
 }
@@ -144,7 +144,10 @@ func UnZValue(z [2]uint64) types.Point {
 	xr, yr := UnInterleaveUint64(z[1])
 	xf := UnLexFloat((xl << 32) | xr)
 	yf := UnLexFloat((yl << 32) | yr)
-	return types.Point{X: xf, Y: yf}
+
+	geosContext := geos.NewContext()
+	result := geosContext.NewPoint([]float64{xf, yf})
+	return types.Point{BaseGeometry: types.BaseGeometry{Geometry: result}}
 }
 
 // ZMask masks in pairs by shifting based off of level (shift amount)
@@ -165,9 +168,14 @@ func ZMask(level byte, zVal ZVal) val.Cell {
 // ZCell converts the GeometryValue into a Cell
 // Note: there is an inefficiency here where small polygons may be placed into a level that's significantly larger
 func ZCell(v types.GeometryValue) val.Cell {
-	bbox := spatial.FindBBox(v)
-	zMin := ZValue(types.Point{X: bbox[0], Y: bbox[1]})
-	zMax := ZValue(types.Point{X: bbox[2], Y: bbox[3]})
+	geosContext := geos.NewContext()
+	minX, minY, maxX, maxY := v.BBox()
+
+	zMinGeom := geosContext.NewPoint([]float64{minX, minY})
+	zMin := ZValue(types.Point{BaseGeometry: types.BaseGeometry{Geometry: zMinGeom}})
+
+	zMaxGeom := geosContext.NewPoint([]float64{maxX, maxY})
+	zMax := ZValue(types.Point{BaseGeometry: types.BaseGeometry{Geometry: zMaxGeom}})
 
 	// Level rounds up by adding 1 and dividing by two (same as a left shift by 1)
 	var level byte

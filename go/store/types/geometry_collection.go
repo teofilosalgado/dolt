@@ -22,12 +22,12 @@ import (
 	"strings"
 
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/twpayne/go-geos"
 )
 
 // GeomColl is a Noms Value wrapper around a string.
 type GeomColl struct {
-	Geometries []Value
-	SRID       uint32
+	Geometry *geos.Geom
 }
 
 // Value interface
@@ -36,55 +36,17 @@ func (v GeomColl) Value(ctx context.Context) (Value, error) {
 }
 
 func (v GeomColl) Equals(other Value) bool {
-	// Compare types
-	v2, ok := other.(GeomColl)
-	if !ok {
-		return false
+	if v2, ok := other.(GeomColl); ok {
+		return v.Geometry.Equals(v2.Geometry)
 	}
-	// Compare SRID
-	if v.SRID != v2.SRID {
-		return false
-	}
-	// Compare lengths of geometries
-	if len(v.Geometries) != len(v2.Geometries) {
-		return false
-	}
-	// Compare each geometry
-	for i := 0; i < len(v.Geometries); i++ {
-		if !v.Geometries[i].Equals(v2.Geometries[i]) {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 func (v GeomColl) Less(ctx context.Context, nbf *NomsBinFormat, other LesserValuable) (bool, error) {
-	// Compare types
-	v2, ok := other.(GeomColl)
-	if !ok {
-		return GeometryCollectionKind < other.Kind(), nil
+	if v2, ok := other.(GeomColl); ok {
+		return v.Geometry.Bounds().Geom().Area() < v2.Geometry.Bounds().Geom().Area(), nil
 	}
-	// Compare SRID
-	if v.SRID != v2.SRID {
-		return v.SRID < v2.SRID, nil
-	}
-	// Get shorter length
-	var n int
-	len1 := len(v.Geometries)
-	len2 := len(v2.Geometries)
-	if len1 < len2 {
-		n = len1
-	} else {
-		n = len2
-	}
-	// Compare each polygon until there is one that is less
-	for i := 0; i < n; i++ {
-		if !v.Geometries[i].Equals(v2.Geometries[i]) {
-			return v.Geometries[i].Less(ctx, nbf, v2.Geometries[i])
-		}
-	}
-	// Determine based off length
-	return len1 < len2, nil
+	return MultiPointKind < other.Kind(), nil
 }
 
 func (v GeomColl) Hash(nbf *NomsBinFormat) (hash.Hash, error) {
@@ -152,10 +114,12 @@ func (v GeomColl) skip(nbf *NomsBinFormat, b *binaryNomsReader) {
 }
 
 func (v GeomColl) HumanReadableString() string {
-	geoms := make([]string, len(v.Geometries))
-	for i, l := range v.Geometries {
-		geoms[i] = l.HumanReadableString()
+	coordinateSequence := v.Geometry.CoordSeq()
+	points := make([]string, coordinateSequence.Size())
+
+	for i := range coordinateSequence.Size() {
+		points[i] = fmt.Sprintf("SRID: %d POINT(%s %s)", v.Geometry.SRID(), strconv.FormatFloat(coordinateSequence.X(i), 'g', -1, 64), strconv.FormatFloat(coordinateSequence.Y(i), 'g', -1, 64))
 	}
-	s := fmt.Sprintf("SRID: %d GEOMETRIES(%s)", v.SRID, strings.Join(geoms, ","))
+	s := fmt.Sprintf("SRID: %d GEOMETRIES(%s)", v.Geometry.SRID(), strings.Join(points, ","))
 	return strconv.Quote(s)
 }

@@ -42,7 +42,7 @@ func (ti *geomcollType) Equals(other TypeInfo) bool {
 	}
 	if o, ok := other.(*geomcollType); ok {
 		// if either ti or other has defined SRID, then check SRID value; otherwise,
-		return ((!ti.sqlGeomCollType.DefinedSRID && !o.sqlGeomCollType.DefinedSRID) || ti.sqlGeomCollType.SRID == o.sqlGeomCollType.SRID) &&
+		return ((ti.sqlGeomCollType.SRID != 0 && o.sqlGeomCollType.SRID != 0) || ti.sqlGeomCollType.SRID == o.sqlGeomCollType.SRID) &&
 			ti.Encoding() == o.Encoding()
 	}
 	return false

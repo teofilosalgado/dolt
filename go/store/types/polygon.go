@@ -22,12 +22,12 @@ import (
 	"strings"
 
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/twpayne/go-geos"
 )
 
 // Polygon is a Noms Value wrapper around a string.
 type Polygon struct {
-	Lines []LineString
-	SRID  uint32
+	Geometry *geos.Geom
 }
 
 // Value interface
@@ -36,55 +36,17 @@ func (v Polygon) Value(ctx context.Context) (Value, error) {
 }
 
 func (v Polygon) Equals(other Value) bool {
-	// Compare types
-	v2, ok := other.(Polygon)
-	if !ok {
-		return false
+	if v2, ok := other.(Polygon); ok {
+		return v.Geometry.Equals(v2.Geometry)
 	}
-	// Compare SRID
-	if v.SRID != v2.SRID {
-		return false
-	}
-	// Compare lengths of lines
-	if len(v.Lines) != len(v2.Lines) {
-		return false
-	}
-	// Compare each line
-	for i := 0; i < len(v.Lines); i++ {
-		if !v.Lines[i].Equals(v2.Lines[i]) {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 func (v Polygon) Less(ctx context.Context, nbf *NomsBinFormat, other LesserValuable) (bool, error) {
-	// Compare types
-	v2, ok := other.(Polygon)
-	if !ok {
-		return PolygonKind < other.Kind(), nil
+	if v2, ok := other.(LineString); ok {
+		return v.Geometry.Area() < v2.Geometry.Area(), nil
 	}
-	// Compare SRID
-	if v.SRID != v2.SRID {
-		return v.SRID < v2.SRID, nil
-	}
-	// Get shorter length
-	var n int
-	len1 := len(v.Lines)
-	len2 := len(v2.Lines)
-	if len1 < len2 {
-		n = len1
-	} else {
-		n = len2
-	}
-	// Compare each point until there is one that is less
-	for i := 0; i < n; i++ {
-		if !v.Lines[i].Equals(v2.Lines[i]) {
-			return v.Lines[i].Less(ctx, nbf, v2.Lines[i])
-		}
-	}
-	// Determine based off length
-	return len1 < len2, nil
+	return LineStringKind < other.Kind(), nil
 }
 
 func (v Polygon) Hash(nbf *NomsBinFormat) (hash.Hash, error) {
@@ -152,10 +114,12 @@ func (v Polygon) skip(nbf *NomsBinFormat, b *binaryNomsReader) {
 }
 
 func (v Polygon) HumanReadableString() string {
-	lines := make([]string, len(v.Lines))
-	for i, l := range v.Lines {
-		lines[i] = l.HumanReadableString()
+	coordinateSequence := v.Geometry.CoordSeq()
+	points := make([]string, coordinateSequence.Size())
+
+	for i := range coordinateSequence.Size() {
+		points[i] = fmt.Sprintf("SRID: %d POINT(%s %s)", v.Geometry.SRID(), strconv.FormatFloat(coordinateSequence.X(i), 'g', -1, 64), strconv.FormatFloat(coordinateSequence.Y(i), 'g', -1, 64))
 	}
-	s := fmt.Sprintf("SRID: %d POLYGON(%s)", v.SRID, strings.Join(lines, ","))
+	s := fmt.Sprintf("SRID: %d POLYGON(%s)", v.Geometry.SRID(), strings.Join(points, ","))
 	return strconv.Quote(s)
 }
