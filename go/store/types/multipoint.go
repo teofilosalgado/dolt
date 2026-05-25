@@ -22,12 +22,12 @@ import (
 	"strings"
 
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/twpayne/go-geos"
 )
 
 // MultiPoint is a Noms Value wrapper around a string.
 type MultiPoint struct {
-	Points []Point
-	SRID   uint32
+	Geometry *geos.Geom
 }
 
 // Value interface
@@ -36,48 +36,17 @@ func (v MultiPoint) Value(ctx context.Context) (Value, error) {
 }
 
 func (v MultiPoint) Equals(other Value) bool {
-	v2, ok := other.(MultiPoint)
-	if !ok {
-		return false
+	if v2, ok := other.(MultiPoint); ok {
+		return v.Geometry.Equals(v2.Geometry)
 	}
-	if v.SRID != v2.SRID {
-		return false
-	}
-	if len(v.Points) != len(v2.Points) {
-		return false
-	}
-	for i := 0; i < len(v.Points); i++ {
-		if !v.Points[i].Equals(v2.Points[i]) {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 func (v MultiPoint) Less(ctx context.Context, nbf *NomsBinFormat, other LesserValuable) (bool, error) {
-	v2, ok := other.(MultiPoint)
-	if !ok {
-		return MultiPointKind < other.Kind(), nil
+	if v2, ok := other.(MultiPoint); ok {
+		return v.Geometry.Bounds().Geom().Area() < v2.Geometry.Bounds().Geom().Area(), nil
 	}
-	if v.SRID != v2.SRID {
-		return v.SRID < v2.SRID, nil
-	}
-	var n int
-	len1 := len(v.Points)
-	len2 := len(v2.Points)
-	if len1 < len2 {
-		n = len1
-	} else {
-		n = len2
-	}
-
-	for i := 0; i < n; i++ {
-		if !v.Points[i].Equals(v2.Points[i]) {
-			return v.Points[i].Less(ctx, nbf, v2.Points[i])
-		}
-	}
-
-	return len1 < len2, nil
+	return MultiPointKind < other.Kind(), nil
 }
 
 func (v MultiPoint) Hash(nbf *NomsBinFormat) (hash.Hash, error) {
@@ -143,10 +112,12 @@ func (v MultiPoint) skip(nbf *NomsBinFormat, b *binaryNomsReader) {
 }
 
 func (v MultiPoint) HumanReadableString() string {
-	points := make([]string, len(v.Points))
-	for i, p := range v.Points {
-		points[i] = p.HumanReadableString()
+	coordinateSequence := v.Geometry.CoordSeq()
+	points := make([]string, coordinateSequence.Size())
+
+	for i := range coordinateSequence.Size() {
+		points[i] = fmt.Sprintf("SRID: %d POINT(%s %s)", v.Geometry.SRID(), strconv.FormatFloat(coordinateSequence.X(i), 'g', -1, 64), strconv.FormatFloat(coordinateSequence.Y(i), 'g', -1, 64))
 	}
-	s := fmt.Sprintf("SRID: %d MULTIPOINT(%s)", v.SRID, strings.Join(points, ","))
+	s := fmt.Sprintf("SRID: %d MULTIPOINT(%s)", v.Geometry.SRID(), strings.Join(points, ","))
 	return strconv.Quote(s)
 }

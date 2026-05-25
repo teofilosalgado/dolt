@@ -42,7 +42,7 @@ func (ti *multilinestringType) Equals(other TypeInfo) bool {
 	}
 	if o, ok := other.(*multilinestringType); ok {
 		// if either ti or other has defined SRID, then check SRID value; otherwise,
-		return ((!ti.sqlMultiLineStringType.DefinedSRID && !o.sqlMultiLineStringType.DefinedSRID) || ti.sqlMultiLineStringType.SRID == o.sqlMultiLineStringType.SRID) &&
+		return ((ti.sqlMultiLineStringType.SRID != 0 && o.sqlMultiLineStringType.SRID != 0) || ti.sqlMultiLineStringType.SRID == o.sqlMultiLineStringType.SRID) &&
 			ti.Encoding() == o.Encoding()
 	}
 	return false

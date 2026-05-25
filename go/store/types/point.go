@@ -21,13 +21,12 @@ import (
 	"strconv"
 
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/twpayne/go-geos"
 )
 
 // Point is a Noms Value wrapper around the primitive string type (for now).
 type Point struct {
-	SRID uint32
-	X    float64
-	Y    float64
+	Geometry *geos.Geom
 }
 
 // Value interface
@@ -37,14 +36,14 @@ func (v Point) Value(ctx context.Context) (Value, error) {
 
 func (v Point) Equals(other Value) bool {
 	if v2, ok := other.(Point); ok {
-		return v.SRID == v2.SRID && v.X == v2.X && v.Y == v2.Y
+		return v.Geometry.Equals(v2.Geometry)
 	}
 	return false
 }
 
 func (v Point) Less(ctx context.Context, nbf *NomsBinFormat, other LesserValuable) (bool, error) {
 	if v2, ok := other.(Point); ok {
-		return v.SRID < v2.SRID || v.X < v2.X || v.Y < v2.Y, nil
+		return v.Geometry.SRID() < v2.Geometry.SRID() || v.Geometry.X() < v2.Geometry.X() || v.Geometry.X() < v2.Geometry.Y(), nil
 	}
 	return PointKind < other.Kind(), nil
 }
@@ -113,6 +112,6 @@ func (v Point) skip(nbf *NomsBinFormat, b *binaryNomsReader) {
 }
 
 func (v Point) HumanReadableString() string {
-	s := fmt.Sprintf("SRID: %d POINT(%s %s)", v.SRID, strconv.FormatFloat(v.X, 'g', -1, 64), strconv.FormatFloat(v.Y, 'g', -1, 64))
+	s := fmt.Sprintf("SRID: %d POINT(%s %s)", v.Geometry.SRID(), strconv.FormatFloat(v.Geometry.X(), 'g', -1, 64), strconv.FormatFloat(v.Geometry.Y(), 'g', -1, 64))
 	return strconv.Quote(s)
 }
